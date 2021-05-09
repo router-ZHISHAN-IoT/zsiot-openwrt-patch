@@ -11,17 +11,20 @@ index 5c005db0c1..e0367f9583 100755
  dlink,dwr-116-a1|\
  head-weblink,hdrm200|\
 diff --git a/target/linux/ramips/base-files/etc/board.d/02_network b/target/linux/ramips/base-files/etc/board.d/02_network
-index 8ca1831afe..5d5ab60528 100755
+index 8ca1831afe..d5c433a7e0 100755
 --- a/target/linux/ramips/base-files/etc/board.d/02_network
 +++ b/target/linux/ramips/base-files/etc/board.d/02_network
-@@ -80,6 +80,7 @@ ramips_setup_interfaces()
- 	3g-6200n|\
- 	ai-br100|\
- 	alfa-network,ac1200rm|\
-+    bl-d9103|\
- 	mediatek,ap-mt7621a-v60|\
- 	xzwifi,creativebox-v1|\
- 	d240|\
+@@ -140,6 +140,10 @@ ramips_setup_interfaces()
+ 		ucidef_add_switch "switch0" \
+ 			"0:lan" "1:lan" "2:lan" "3:lan" "4:wan" "6@eth0"
+ 		;;
++    bl-d9103)
++        ucidef_add_switch "switch0" \
++            "0:lan:4" "1:lan:3" "2:lan:2" "3:lan:1" "4:wan" "6@eth0"
++        ;;
+ 	gehua,ghl-r-001)
+ 		ucidef_add_switch "switch0" \
+ 			"0:lan" "1:lan" "2:lan" "4:wan" "6@eth0"
 diff --git a/target/linux/ramips/base-files/lib/ramips.sh b/target/linux/ramips/base-files/lib/ramips.sh
 index 093303892c..1a17f8ae93 100755
 --- a/target/linux/ramips/base-files/lib/ramips.sh
@@ -37,33 +40,130 @@ index 093303892c..1a17f8ae93 100755
  		name="bocco"
  		;;
 diff --git a/target/linux/ramips/dts/BL-D9103.dts b/target/linux/ramips/dts/BL-D9103.dts
-index 4137e339a6..cf63ddc05b 100644
---- a/target/linux/ramips/dts/BL-D9103.dts
+new file mode 100644
+index 0000000000..8315ab75ca
+--- /dev/null
 +++ b/target/linux/ramips/dts/BL-D9103.dts
-@@ -20,20 +20,13 @@
- 		compatible = "gpio-leds";
- 
- 		led_sys: sys {
--			label = "zbt-wr8305rt:green:sys";
+@@ -0,0 +1,119 @@
++/dts-v1/;
++
++#include "mt7620n.dtsi"
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/input/input.h>
++
++/ {
++	compatible = "b-link,bl-d9103", "ralink,mt7620n-soc";
++	model = "B-link BL-D9103";
++
++	aliases {
++		led-boot = &led_sys;
++		led-failsafe = &led_sys;
++		led-running = &led_sys;
++		led-upgrade = &led_sys;
++	};
++
++	leds {
++		compatible = "gpio-leds";
++
++		led_sys: sys {
 +			label = "bl-d9103:green:sys";
- 			gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
- 		};
- 
--		lan {
--			label = "zbt-wr8305rt:green:usb";
--			gpios = <&gpio1 15 GPIO_ACTIVE_LOW>;
--			trigger-sources = <&ohci_port1>, <&ehci_port1>;
--			linux,default-trigger = "usbport";
--		};
--
- 		wifi {
--			label = "zbt-wr8305rt:green:wifi";
--			gpios = <&gpio3 0 GPIO_ACTIVE_HIGH>;
++			gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
++		};
++
++		wifi {
 +			label = "bl-d9103:green:wifi";
-+			gpios = <&gpio3 0 GPIO_ACTIVE_LOW>;
- 		};
- 	};
- 
++			gpios = <&gpio3 0 GPIO_ACTIVE_HIGH>;
++		};
++	};
++
++	keys {
++		compatible = "gpio-keys-polled";
++		poll-interval = <20>;
++
++		reset {
++			label = "reset";
++			gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
++			linux,code = <KEY_RESTART>;
++		};
++	};
++};
++
++&gpio1 {
++	status = "okay";
++};
++
++&gpio3 {
++	status = "okay";
++};
++
++&spi0 {
++	status = "okay";
++
++	m25p80@0 {
++		compatible = "jedec,spi-nor";
++		reg = <0>;
++		spi-max-frequency = <10000000>;
++
++		partitions {
++			compatible = "fixed-partitions";
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			partition@0 {
++				label = "u-boot";
++				reg = <0x0 0x30000>;
++				read-only;
++			};
++
++			partition@30000 {
++				label = "u-boot-env";
++				reg = <0x30000 0x10000>;
++				read-only;
++			};
++
++			factory: partition@40000 {
++				label = "factory";
++				reg = <0x40000 0x10000>;
++				read-only;
++			};
++
++			partition@50000 {
++				compatible = "denx,uimage";
++				label = "firmware";
++				reg = <0x50000 0x7b0000>;
++			};
++		};
++	};
++};
++
++&ehci {
++	status = "okay";
++};
++
++&ohci {
++	status = "okay";
++};
++
++&ethernet {
++	pinctrl-names = "default";
++	pinctrl-0 = <&ephy_pins>;
++	mtd-mac-address = <&factory 0x4>;
++	mediatek,portmap = "llllw";
++};
++
++&wmac {
++	ralink,mtd-eeprom = <&factory 0>;
++};
++
++&pinctrl {
++	state_default: pinctrl0 {
++		default {
++			ralink,group = "i2c", "uartf", "spi refclk", "wled";
++			ralink,function = "gpio";
++		};
++	};
++};
 diff --git a/target/linux/ramips/image/mt7620.mk b/target/linux/ramips/image/mt7620.mk
 index 0347ff227f..05722cf0b2 100644
 --- a/target/linux/ramips/image/mt7620.mk
